@@ -29,6 +29,8 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+import mlflow
+import mlflow.sklearn
 
 
 # Split the dataframe into test and train data
@@ -71,13 +73,17 @@ def main():
 
     data = split_data(train_df)
 
+    with mlflow.start_run():
     # Train the model
-    model = train_model(data, ridge_args)
+        model = train_model(data, ridge_args)
 
-    # Log the metrics for the model
-    metrics = get_model_metrics(model, data)
-    for (k, v) in metrics.items():
-        print(f"{k}: {v}")
+        mlflow.sklearn.log_model(model,"ridge-model")
+        # Log the metrics for the model
+        metrics = get_model_metrics(model, data)
+        mlflow.log_metrics(metrics)
+        
+        for (k, v) in metrics.items():
+            print(f"{k}: {v}")
 
 
 if __name__ == '__main__':
