@@ -25,66 +25,73 @@ POSSIBILITY OF SUCH DAMAGE.
 """
 
 import os
-import pandas as pd
+from sklearn.datasets import load_diabetes
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+import joblib
+import pandas as pd
 import mlflow
 import mlflow.sklearn
+import argparse
 
+# Function to load and prepare the data
+def load_data():
+    sample_data = load_diabetes()
+    df = pd.DataFrame(data=sample_data.data, columns=sample_data.feature_names)
+    df['Y'] = sample_data.target
+    return df
 
-# Split the dataframe into test and train data
+# Function to split the data into train and test sets
 def split_data(df):
     X = df.drop('Y', axis=1).values
     y = df['Y'].values
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
     data = {"train": {"X": X_train, "y": y_train},
             "test": {"X": X_test, "y": y_test}}
     return data
 
-
-# Train the model, return the model
-def train_model(data, ridge_args):
-    reg_model = Ridge(**ridge_args)
+# Function to train the model
+def train_model(data, alpha):
+    reg_model = Ridge(alpha=alpha)
     reg_model.fit(data["train"]["X"], data["train"]["y"])
     return reg_model
 
-
-# Evaluate the metrics for the model
-def get_model_metrics(model, data):
+# Function to evaluate the model
+def evaluate_model(model, data):
     preds = model.predict(data["test"]["X"])
     mse = mean_squared_error(preds, data["test"]["y"])
-    metrics = {"mse": mse}
-    return metrics
+    return {"mse": mse}
 
+# Function to save the model
+def save_model(model, model_name):
+    joblib.dump(value=model, filename=model_name)
 
-def main():
-    print("Running train.py")
-
-    # Define training parameters
-    ridge_args = {"alpha": 0.5}
-
-    # Load the training data as dataframe
-    data_dir = "data"
-    data_file = os.path.join(data_dir, 'diabetes.csv')
-    train_df = pd.read_csv(data_file)
-
-    data = split_data(train_df)
-
+# Main function to orchestrate the workflow
+def main(alpha, model_name):
+    # Start MLflow run
     with mlflow.start_run():
-    # Train the model
-        model = train_model(data, ridge_args)
-
-        mlflow.sklearn.log_model(model,"ridge-model")
-        # Log the metrics for the model
-        metrics = get_model_metrics(model, data)
+        df = load_data()
+        data = split_data(df)
+        model = train_model(data, alpha)
+        metrics = evaluate_model(model, data)
+        
+        # Log parameters and metrics with MLflow
+        mlflow.log_param("alpha", alpha)
         mlflow.log_metrics(metrics)
         
-        for (k, v) in metrics.items():
-            print(f"{k}: {v}")
+        # Save and log the model with MLflow
+        save_model(model, model_name)
+        mlflow.sklearn.log_model(model, "model")
+        mlflow.log_artifact(model_name)
 
+        print(f"Model saved as {model_name}")
+        print(f"Metrics: {metrics}")
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a Ridge Regression model.")
+    parser.add_argument("--alpha", type=float, default=0.5, help="Regularization strength")
+    parser.add_argument("--model_name", type=str, default="sklearn_regression_model.pkl", help="Name of the output model file")
+    args = parser.parse_args()
+    
+    main(args.alpha, args.model_name)
